@@ -53,7 +53,14 @@
 #include <curl/curl.h>
 
 #include "../aia.h"
-#if !defined(__SWITCH__) && !defined(__ANDROID__)
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+// Android and iOS have no libevent, use select() instead
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+#define CHIAKI_HOLEPUNCH_USE_SELECT
+#endif
+#if !defined(__SWITCH__) && !defined(CHIAKI_HOLEPUNCH_USE_SELECT)
 #include <event2/event.h>
 #endif
 #include <json-c/json_object.h>
@@ -4027,7 +4034,7 @@ static bool get_client_addr_remote_stun(Session *session, char *address, uint16_
  * @param[out] out Pointer to the socket where the connection was established with the selected candidate
 */
 
-#if !defined(__SWITCH__) && !defined(__ANDROID__)
+#if !defined(__SWITCH__) && !defined(CHIAKI_HOLEPUNCH_USE_SELECT)
 typedef struct {
     struct event_base *base;
     struct event **events;
@@ -4101,7 +4108,7 @@ static ChiakiErrorCode check_candidates(
     // Use poll() on Switch — select() fails when FD numbers >= FD_SETSIZE (256)
     struct pollfd *pollfds = NULL;
 #endif
-#ifdef __ANDROID__
+#ifdef CHIAKI_HOLEPUNCH_USE_SELECT
     fd_set fds;
 #endif
     bool failed = true;
@@ -4288,7 +4295,7 @@ static ChiakiErrorCode check_candidates(
     bool responded = false;
     bool connecting = false;
     int retry_counter = 0;
-#if !defined(__SWITCH__) && !defined(__ANDROID__)
+#if !defined(__SWITCH__) && !defined(CHIAKI_HOLEPUNCH_USE_SELECT)
     CandidateEventContext poll_ctx = {0};
     size_t socket_slots = 0;
     if (!CHIAKI_SOCKET_IS_INVALID(session->ipv4_sock))
@@ -4416,7 +4423,7 @@ static ChiakiErrorCode check_candidates(
                 break;
             }
         }
-#elif defined(__ANDROID__)
+#elif defined(CHIAKI_HOLEPUNCH_USE_SELECT)
         chiaki_socket_t maxfd = -1;
         FD_ZERO(&fds);
         if(!CHIAKI_SOCKET_IS_INVALID(session->ipv4_sock))
@@ -4817,7 +4824,7 @@ static ChiakiErrorCode check_candidates(
     else if(err != CHIAKI_ERR_SUCCESS)
         goto cleanup_sockets;
 
-#if !defined(__SWITCH__) && !defined(__ANDROID__)
+#if !defined(__SWITCH__) && !defined(CHIAKI_HOLEPUNCH_USE_SELECT)
     for (size_t i = 0; i < poll_ctx.events_count; i++)
         event_free(poll_ctx.events[i]);
     free(poll_ctx.events);
@@ -4887,7 +4894,7 @@ static ChiakiErrorCode check_candidates(
     return CHIAKI_ERR_SUCCESS;
 
 cleanup_sockets:
-#if !defined(__SWITCH__) && !defined(__ANDROID__)
+#if !defined(__SWITCH__) && !defined(CHIAKI_HOLEPUNCH_USE_SELECT)
     for (size_t i = 0; poll_ctx.events && i < poll_ctx.events_count; i++)
         event_free(poll_ctx.events[i]);
     free(poll_ctx.events);
